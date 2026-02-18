@@ -22,5 +22,5 @@ COPY . .
 EXPOSE 7002
 
 # Comando di avvio
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7002"]
 
