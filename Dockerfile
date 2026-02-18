@@ -18,7 +18,7 @@ WORKDIR $HOME
 USER user
 
 # Clone repo-ul
-RUN git clone --depth 1 https://github.com/LUC4N3X/Torrenthan app
+RUN git clone --depth 1 https://github.com/drg25ii/stremio-torrenthan app
 WORKDIR $HOME/app
 
 # Instalează deps
