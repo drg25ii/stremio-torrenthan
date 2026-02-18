@@ -1,26 +1,29 @@
-# Usa un'immagine base leggera di Python
 FROM python:3.11-slim
 
-# Imposta la directory di lavoro nel container
-WORKDIR /app
+# deps pentru git + (opțional) build deps dacă ai pachete care compilează
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
-# Variabili d'ambiente per evitare file .pyc e buffer output
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PORT=7000
+# HF rulează ca UID 1000; evită probleme de permisiuni
+RUN useradd -m -u 1000 user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=7002
 
-# Copia prima i requirements per sfruttare la cache di Docker
-COPY requirements.txt .
+WORKDIR $HOME
+USER user
 
-# Installa le dipendenze
-RUN pip install --no-cache-dir -r requirements.txt
+# Clone repo-ul
+RUN git clone --depth 1 https://github.com/LUC4N3X/Torrenthan app
+WORKDIR $HOME/app
 
-# Copia tutto il resto del codice sorgente
-COPY . .
+# Instalează deps
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Espone la porta specificata
 EXPOSE 7002
-
-# Comando di avvio
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7002"]
-
+CMD ["sh","-c","uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
