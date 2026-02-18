@@ -59,5 +59,4 @@ async def fetch_torrentio_streams(type: str, id: str, torrentio_options: str = "
                 print(f"[DEBUG INFO] Sorgente {base_url} non disponibile. Provo la prossima...")
                 continue
         
-        print("[DEBUG CRITICAL] Northflank è completamente bloccato. Usa PROXY_URL o MediaFlow.")
         return {"streams": []}
