@@ -18,7 +18,7 @@ from core import rd
 
 app = FastAPI()
 
-# Configurazione CORS per permettere a Stremio di comunicare con l'addon
+# Configurazione CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -181,15 +181,23 @@ async def get_stream(request: Request, config: str, type: str, id: str):
     excluded_qualities = settings.get("qualityfilter", "").split(",")
     size_limit = float(settings.get("sizelimit", 0))
 
+    # --- DEBUG LOGS (Verifica Torrentio) ---
+    print(f"[DEBUG] Richiesta stream per ID: {id}, Tipo: {type}")
+    
     try:
         data = await fetch_torrentio_streams(type, id, settings.get("options", ""))
         streams = data.get("streams", [])
-    except: return {"streams": []}
+        print(f"[DEBUG] Torrentio ha restituito {len(streams)} risultati grezzi.")
+    except Exception as e:
+        print(f"[DEBUG ERROR] Errore chiamata Torrentio: {e}")
+        return {"streams": []}
 
     final_streams = []
+    # Filtraggio per lingua italiana
     ita_streams = [s for s in streams if is_italian_content(s.get('name', ''), s.get('title', ''))]
-    host_url = f"{request.url.scheme}://{request.url.netloc}"
+    print(f"[DEBUG] Dopo il filtro ITA sono rimasti {len(ita_streams)} risultati.")
 
+    host_url = f"{request.url.scheme}://{request.url.netloc}"
     checks = {"4k": ["4k", "2160p"], "1080p": ["1080p"], "720p": ["720p"], "hdr": ["hdr"], "hevc": ["hevc", "x265"]}
 
     for stream in ita_streams:
@@ -207,7 +215,7 @@ async def get_stream(request: Request, config: str, type: str, id: str):
             stream['url'] = f"{host_url}/{config}/playback/{service}/{info_hash}/video.mp4"
             stream['behaviorHints'] = {'notWebReady': True}
 
-        # Correzione SyntaxError: Split spostato fuori dal f-string
+        # Pulizia titolo per Stremio
         raw_title = stream.get('title', '').split('\n')[0]
         stream['name'] = f"{left_icon} {provider_code} {provider_icon}\nTorrenthan"
         stream['title'] = (
@@ -218,6 +226,7 @@ async def get_stream(request: Request, config: str, type: str, id: str):
         )
         final_streams.append(stream)
 
+    print(f"[DEBUG] Invio a Stremio {len(final_streams)} stream finali.")
     return {"streams": sorted(final_streams[:20], key=lambda x: "⚡" not in x["name"])}
 
 if __name__ == "__main__":
