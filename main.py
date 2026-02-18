@@ -207,13 +207,19 @@ async def get_stream(request: Request, config: str, type: str, id: str):
             stream['url'] = f"{host_url}/{config}/playback/{service}/{info_hash}/video.mp4"
             stream['behaviorHints'] = {'notWebReady': True}
 
+        # Correzione SyntaxError: Split spostato fuori dal f-string
+        raw_title = stream.get('title', '').split('\n')[0]
         stream['name'] = f"{left_icon} {provider_code} {provider_icon}\nTorrenthan"
-        stream['title'] = f"▶ {stream.get('title', '').split('\\n')[0]}\n🔱 {data['res']} • {data['codec']}{data['hdr']}\n🗣️ IT/GB • 💿 {data['audio']}\n💾 {data['size']} • 👥 {data['peers']}"
+        stream['title'] = (
+            f"▶ {raw_title}\n"
+            f"🔱 {data['res']} • {data['codec']}{data['hdr']}\n"
+            f"🗣️ IT/GB • 💿 {data['audio']}\n"
+            f"💾 {data['size']} • 👥 {data['peers']}"
+        )
         final_streams.append(stream)
 
     return {"streams": sorted(final_streams[:20], key=lambda x: "⚡" not in x["name"])}
 
 if __name__ == "__main__":
-    # Importante per Northflank: legge la variabile d'ambiente PORT
     port = int(os.environ.get("PORT", 7860))
     uvicorn.run(app, host="0.0.0.0", port=port)
