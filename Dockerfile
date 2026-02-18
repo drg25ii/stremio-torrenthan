@@ -7,7 +7,7 @@ WORKDIR /app
 # Variabili d'ambiente per evitare file .pyc e buffer output
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PORT=7000
+ENV PORT=7860
 
 # Copia prima i requirements per sfruttare la cache di Docker
 COPY requirements.txt .
@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Espone la porta specificata
-EXPOSE 7002
+EXPOSE 7860
 
 # Comando di avvio
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7002"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
