@@ -17,8 +17,6 @@ from core.filter import is_italian_content
 from core import rd
 
 app = FastAPI()
-
-# Configurazione CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,11 +60,11 @@ def parse_size_to_gb(size_str: str) -> float:
 def extract_leviathan_data(title: str, name: str):
     title_lower = title.lower()
     name_lower = name.lower()
-    
     res = "SD"
     if "2160p" in name_lower or "4k" in name_lower: res = "4K"
     elif "1080p" in name_lower: res = "1080p"
     elif "720p" in name_lower: res = "720p"
+    elif "480p" in name_lower: res = "SD"
 
     codec = "x264"
     if "hevc" in title_lower or "h265" in title_lower: codec = "HEVC"
@@ -107,8 +105,7 @@ async def logic_get_rd_link(hash_val: str, api_key: str):
     full_magnet = get_magnet_with_trackers(hash_val)
     try:
         async with httpx.AsyncClient(timeout=20, headers={'Authorization': f"Bearer {api_key}"}) as client:
-            payload = {'magnet': full_magnet, 'host': 'rd'}
-            resp = await client.post("https://api.real-debrid.com/rest/1.0/torrents/addMagnet", data=payload)
+            resp = await client.post("https://api.real-debrid.com/rest/1.0/torrents/addMagnet", data={'magnet': full_magnet, 'host': 'rd'})
             magnet_resp = resp.json()
             if 'id' not in magnet_resp: return None
             torrent_id = magnet_resp['id']
@@ -119,7 +116,9 @@ async def logic_get_rd_link(hash_val: str, api_key: str):
                 if links:
                     unrestrict_resp = await client.post("https://api.real-debrid.com/rest/1.0/unrestrict/link", data={"link": links[0]})
                     if unrestrict_resp.status_code == 200:
+                        await rd.delete_torrent(client, torrent_id)
                         return unrestrict_resp.json().get('download')
+            await rd.delete_torrent(client, torrent_id)
     except Exception as e: print(f"RD Resolve Error: {e}")
     return None
 
@@ -130,7 +129,7 @@ async def logic_get_torbox_link(hash_val: str, api_key: str):
     full_magnet = get_magnet_with_trackers(hash_val)
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            await client.post(f"{base_url}/torrents/createtorrent", data={"magnet": full_magnet}, headers=headers)
+            await client.post(f"{base_url}/torrents/createtorrent", data={"magnet": full_magnet, "seed": "1"}, headers=headers)
             resp_list = await client.get(f"{base_url}/torrents/mylist?bypass_cache=true", headers=headers)
             target = next((t for t in resp_list.json().get('data', []) if t.get('hash') == hash_val), None)
             if target and target.get('files'):
@@ -145,7 +144,7 @@ MANIFEST = {
     "id": "org.ita.torrenthan",
     "version": "1.0.0",
     "name": "Torrenthan 🇮🇹",
-    "description": "L'esperienza definitiva per lo streaming in Italia. Ottimizzato per Real-Debrid e TorBox.",
+    "description": "L'esperienza definitiva per lo streaming in Italia. Torrenthan ottimizza Torrentio con supporto RD/TorBox.",
     "logo": "https://i.ibb.co/wfF4j52/Gemini-Generated-Image-mm5p80mm5p80mm5p-Photoroom.png",
     "resources": ["stream"],
     "types": ["movie", "series"],
@@ -159,7 +158,7 @@ async def configure(request: Request):
     return templates.TemplateResponse("configure.html", {"request": request})
 
 @app.get("/manifest.json")
-async def get_manifest_no_config():
+async def get_manifest_default():
     return MANIFEST
 
 @app.get("/{config}/manifest.json")
@@ -172,33 +171,29 @@ async def playback(config: str, service: str, query: str, filename: str):
     apikey = settings.get("key")
     final_url = await logic_get_rd_link(query, apikey) if service == 'realdebrid' else await logic_get_torbox_link(query, apikey)
     if final_url: return RedirectResponse(url=final_url)
-    return JSONResponse(status_code=404, content={"error": "Link non disponibile"})
+    return JSONResponse(status_code=404, content={"error": "Risoluzione fallita"})
 
 @app.get("/{config}/stream/{type}/{id}.json")
 async def get_stream(request: Request, config: str, type: str, id: str):
     settings = decode_config(config)
     service, apikey = settings.get("service"), settings.get("key")
-    excluded_qualities = settings.get("qualityfilter", "").split(",")
     size_limit = float(settings.get("sizelimit", 0))
+    excluded_qualities = settings.get("qualityfilter", "").split(",")
 
-    # --- DEBUG LOGS (Verifica Torrentio) ---
-    print(f"[DEBUG] Richiesta stream per ID: {id}, Tipo: {type}")
-    
+    print(f"[DEBUG] Richiesta stream: {id}")
     try:
         data = await fetch_torrentio_streams(type, id, settings.get("options", ""))
         streams = data.get("streams", [])
-        print(f"[DEBUG] Torrentio ha restituito {len(streams)} risultati grezzi.")
+        print(f"[DEBUG] Torrentio OK: {len(streams)} risultati.")
     except Exception as e:
-        print(f"[DEBUG ERROR] Errore chiamata Torrentio: {e}")
+        print(f"[DEBUG ERROR] Torrentio FALLITO: {e}")
         return {"streams": []}
 
     final_streams = []
-    # Filtraggio per lingua italiana
     ita_streams = [s for s in streams if is_italian_content(s.get('name', ''), s.get('title', ''))]
-    print(f"[DEBUG] Dopo il filtro ITA sono rimasti {len(ita_streams)} risultati.")
-
     host_url = f"{request.url.scheme}://{request.url.netloc}"
-    checks = {"4k": ["4k", "2160p"], "1080p": ["1080p"], "720p": ["720p"], "hdr": ["hdr"], "hevc": ["hevc", "x265"]}
+
+    checks = {"cam": ["cam", "ts"], "4k": ["4k", "2160p"], "1080p": ["1080p"], "hdr": ["hdr"]}
 
     for stream in ita_streams:
         combined_text = (stream.get('name', '') + " " + stream.get('title', '')).lower()
@@ -206,27 +201,19 @@ async def get_stream(request: Request, config: str, type: str, id: str):
 
         info_hash = get_hash_from_stream(stream)
         data = extract_leviathan_data(stream.get('title', ''), stream.get('name', ''))
-        
         if size_limit > 0 and parse_size_to_gb(data['size']) > size_limit: continue
 
         provider_code, provider_icon, left_icon = ("RD", "⚡", "👑") if service == 'realdebrid' else ("TB", "⚡", "🧊") if service == 'torbox' else ("P2P", "👤", "🔵")
-        
         if apikey and (service == 'realdebrid' or service == 'torbox'):
             stream['url'] = f"{host_url}/{config}/playback/{service}/{info_hash}/video.mp4"
             stream['behaviorHints'] = {'notWebReady': True}
 
-        # Pulizia titolo per Stremio
-        raw_title = stream.get('title', '').split('\n')[0]
+        # Fix split \n per evitare SyntaxError in f-string
+        clean_name = stream.get('title', '').split('\n')[0].replace('.', ' ').strip()
         stream['name'] = f"{left_icon} {provider_code} {provider_icon}\nTorrenthan"
-        stream['title'] = (
-            f"▶ {raw_title}\n"
-            f"🔱 {data['res']} • {data['codec']}{data['hdr']}\n"
-            f"🗣️ IT/GB • 💿 {data['audio']}\n"
-            f"💾 {data['size']} • 👥 {data['peers']}"
-        )
+        stream['title'] = f"▶ {clean_name}\n🔱 {data['res']} • {data['codec']}{data['hdr']}\n🗣️ IT/GB | 💿 {data['audio']}\n💾 {data['size']} | 👥 {data['peers']}"
         final_streams.append(stream)
 
-    print(f"[DEBUG] Invio a Stremio {len(final_streams)} stream finali.")
     return {"streams": sorted(final_streams[:20], key=lambda x: "⚡" not in x["name"])}
 
 if __name__ == "__main__":
