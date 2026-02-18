@@ -6,7 +6,7 @@ WORKDIR /app
 # Variabili d'ambiente per evitare file .pyc e buffer output
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PORT=7002
+ENV PORT=7000
 
 # Copia prima i requirements per sfruttare la cache di Docker
 COPY requirements.txt .
