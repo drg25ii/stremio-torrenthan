@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -51,7 +52,6 @@ def parse_size_to_gb(size_str: str) -> float:
     """Converte stringhe come '2.5 GB' o '700 MB' in float GB."""
     if not size_str or size_str == "N/A": 
         return 0.0
-    
     
     match = re.search(r'([\d\.]+)\s*([GM]B)', size_str, re.IGNORECASE)
     if not match: 
@@ -306,11 +306,12 @@ async def get_stream(request: Request, config: str, type: str, id: str):
         )
         final_streams.append(stream)
     
-    
     final_streams = final_streams[:20]
 
     final_streams.sort(key=lambda x: "⚡" not in x["name"])
     return {"streams": final_streams}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7002)
+    # Citire dinamica a portului din mediu (Northflank/Heroku/etc), fallback pe 7002
+    port = int(os.environ.get("PORT", 7002))
+    uvicorn.run(app, host="0.0.0.0", port=port)
