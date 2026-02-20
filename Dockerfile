@@ -6,7 +6,8 @@ WORKDIR /app
 # Variabili d'ambiente per evitare file .pyc e buffer output
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PORT=7000
+# Setăm un port default pentru teste locale
+ENV PORT=7002
 
 # Copia prima i requirements per sfruttare la cache di Docker
 COPY requirements.txt .
@@ -17,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia tutto il resto del codice sorgente
 COPY . .
 
-# Espone la porta specificata
+# Espone la porta
 EXPOSE 7002
 
-# Comando di avvio
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7002"]
+# Comando di avvio (citind variabila $PORT alocată de Northflank)
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
