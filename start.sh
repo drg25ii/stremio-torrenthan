@@ -1,8 +1,8 @@
 #!/bin/bash
-# Porniți scraper-ul Comet în fundal (ascultă intern pe 8000)
-echo "Pornim Comet intern..."
-python /comet/comet/main.py &
+# Porniți scraper-ul intern NodeJS Torrentio (ascultă pe portul 7000 intern)
+echo "Pornim Torrentio Scraper intern..."
+cd /scraper && node index.js &
 
-# Porniți Torrenthan (FastAPI-ul tău care ascultă pe portul Northflank)
+# Porniți Torrenthan
 echo "Pornim Torrenthan..."
-uvicorn main:app --host 0.0.0.0 --port ${PORT:-7002}
+cd /app && uvicorn main:app --host 0.0.0.0 --port ${PORT:-7002}
