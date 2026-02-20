@@ -1,31 +1,25 @@
 FROM python:3.11-slim
 
-# 1. Instalăm Node.js și wget pentru scraperul intern Torrentio
-RUN apt-get update && apt-get install -y curl wget gnupg2 \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs git \
-    && rm -rf /var/lib/apt/lists/*
-
-# 2. Descărcăm și instalăm Torrentio Scraper (în fundal)
-WORKDIR /scraper
-RUN git clone https://github.com/TheBeastLT/torrentio-scraper.git . \
-    && npm install
-
-# 3. Pregătim Torrenthan (aplicația ta)
+# Imposta la directory di lavoro nel container
 WORKDIR /app
+
+# Variabili d'ambiente per evitare file .pyc e buffer output
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+# Setăm un port default pentru teste locale
 ENV PORT=7002
 
+# Copia prima i requirements per sfruttare la cache di Docker
 COPY requirements.txt .
+
+# Installa le dipendenze
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. Copiem tot codul tău
+# Copia tutto il resto del codice sorgente
 COPY . .
 
-# 5. Facem scriptul de start executabil
-RUN chmod +x start.sh
-
+# Espone la porta
 EXPOSE 7002
 
-CMD ["./start.sh"]
+# Comando di avvio (citind variabila $PORT alocată de Northflank)
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
