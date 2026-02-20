@@ -228,21 +228,25 @@ async def get_stream(request: Request, config: str, type: str, id: str):
     apikey = settings.get("key")
     options = settings.get("options", "")
     
-    # --- RECUPERO FILTRI DALLA CONFIGURAZIONE ---
     excluded_qualities = settings.get("qualityfilter", "").split(",")
-    # Recupera il limite di dimensione, default 0 (nessun limite)
     size_limit = float(settings.get("sizelimit", 0))
 
+    # --- ZONA DE DEBUG ADAUGATĂ AICI ---
     try:
         data = await fetch_torrentio_streams(type, id, options)
         streams = data.get("streams", [])
-    except: return {"streams": []}
+        print(f"DEBUG: Am primit {len(streams)} rezultate brute de la Torrentio pentru ID {id}")
+    except Exception as e:
+        print(f"EROARE CRITICĂ DE LA TORRENTIO: {e}")
+        return {"streams": []}
 
     final_streams = []
     ita_streams = [s for s in streams if is_italian_content(s.get('name', ''), s.get('title', ''))]
+    
+    print(f"DEBUG: Din cele {len(streams)} brute, au mai rămas {len(ita_streams)} după filtrul de limba italiană.")
+    
     host_url = f"{request.url.scheme}://{request.url.netloc}"
 
-    # --- DEFINIZIONE KEYWORDS PER IL FILTRAGGIO QUALITÀ ---
     checks = {
         "cam": ["cam", "ts", "telesync", "hd-ts", "hdts", "tc"],
         "scr": ["scr", "screener", "dvdscr", "bdscr"],
@@ -260,7 +264,6 @@ async def get_stream(request: Request, config: str, type: str, id: str):
         original_title = stream.get('title', '')
         combined_text = (original_name + " " + original_title).lower()
 
-        # --- APPLICAZIONE FILTRO QUALITÀ ---
         should_exclude = False
         for q in excluded_qualities:
             if q in checks:
@@ -269,20 +272,16 @@ async def get_stream(request: Request, config: str, type: str, id: str):
                     break
         
         if should_exclude:
-            continue # Salta questo stream e passa al prossimo
+            continue 
 
-        # --- ESTRAZIONE DATI (per Dimensione e Formattazione) ---
         info_hash = get_hash_from_stream(stream)
         data = extract_leviathan_data(original_title, original_name)
 
-        # --- APPLICAZIONE FILTRO DIMENSIONE (NUOVO) ---
         if size_limit > 0:
             size_gb = parse_size_to_gb(data['size'])
-            
             if size_gb > 0 and size_gb > size_limit:
                 continue
 
-        # --- FORMATTAZIONE STREAM ---
         provider_code = "P2P"
         provider_icon = "👤"
         left_color_icon = "🔵"
@@ -307,11 +306,11 @@ async def get_stream(request: Request, config: str, type: str, id: str):
         final_streams.append(stream)
     
     final_streams = final_streams[:20]
-
     final_streams.sort(key=lambda x: "⚡" not in x["name"])
+    
+    print(f"DEBUG: Se returnează {len(final_streams)} stream-uri finale către Stremio.")
     return {"streams": final_streams}
 
 if __name__ == "__main__":
-    # Citire dinamica a portului din mediu (Northflank/Heroku/etc), fallback pe 7002
     port = int(os.environ.get("PORT", 7002))
     uvicorn.run(app, host="0.0.0.0", port=port)
