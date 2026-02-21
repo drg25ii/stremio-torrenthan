@@ -223,26 +223,41 @@ async def playback(config: str, service: str, query: str, filename: str):
 
 @app.get("/{config}/stream/{type}/{id}.json")
 async def get_stream(request: Request, config: str, type: str, id: str):
+
     settings = decode_config(config)
     service = settings.get("service")
     apikey = settings.get("key")
     options = settings.get("options", "")
-    
-    # --- RECUPERO FILTRI DALLA CONFIGURAZIONE ---
+
     excluded_qualities = settings.get("qualityfilter", "").split(",")
-    # Recupera il limite di dimensione, default 0 (nessun limite)
     size_limit = float(settings.get("sizelimit", 0))
 
+    # --- FETCH TORRENTIO ---
     try:
         data = await fetch_torrentio_streams(type, id, options)
-        streams = data.get("streams", [])
-    except: return {"streams": []}
+        streams = data.get("streams", []) if isinstance(data, dict) else []
+        print("TOTAL STREAMS FROM TORRENTIO:", len(streams))
+    except Exception as e:
+        print("TORRENTIO ERROR:", e)
+        return {"streams": []}
+
+    if not streams:
+        return {"streams": []}
+
+    # --- FILTRU ITALIAN (fallback inteligent) ---
+    ita_streams = [
+        s for s in streams
+        if is_italian_content(s.get('name', ''), s.get('title', ''))
+    ]
+
+    print("ITALIAN STREAMS:", len(ita_streams))
+
+    # Dacă nu există ITA → folosim toate streamurile
+    usable_streams = ita_streams if ita_streams else streams
 
     final_streams = []
-    ita_streams = [s for s in streams if is_italian_content(s.get('name', ''), s.get('title', ''))]
     host_url = f"{request.url.scheme}://{request.url.netloc}"
 
-    # --- DEFINIZIONE KEYWORDS PER IL FILTRAGGIO QUALITÀ ---
     checks = {
         "cam": ["cam", "ts", "telesync", "hd-ts", "hdts", "tc"],
         "scr": ["scr", "screener", "dvdscr", "bdscr"],
@@ -255,61 +270,65 @@ async def get_stream(request: Request, config: str, type: str, id: str):
         "hevc": ["hevc", "x265", "h265"]
     }
 
-    for stream in ita_streams:
+    for stream in usable_streams:
+
         original_name = stream.get('name', '')
         original_title = stream.get('title', '')
         combined_text = (original_name + " " + original_title).lower()
 
-        # --- APPLICAZIONE FILTRO QUALITÀ ---
+        # --- FILTRU CALITATE ---
         should_exclude = False
         for q in excluded_qualities:
             if q in checks:
                 if any(x in combined_text for x in checks[q]):
                     should_exclude = True
                     break
-        
+
         if should_exclude:
-            continue # Salta questo stream e passa al prossimo
+            continue
 
-        # --- ESTRAZIONE DATI (per Dimensione e Formattazione) ---
         info_hash = get_hash_from_stream(stream)
-        data = extract_leviathan_data(original_title, original_name)
+        data_meta = extract_leviathan_data(original_title, original_name)
 
-        # --- APPLICAZIONE FILTRO DIMENSIONE (NUOVO) ---
+        # --- FILTRU DIMENSIUNE ---
         if size_limit > 0:
-            size_gb = parse_size_to_gb(data['size'])
-            
+            size_gb = parse_size_to_gb(data_meta['size'])
             if size_gb > 0 and size_gb > size_limit:
                 continue
 
-        # --- FORMATTAZIONE STREAM ---
+        # --- FORMAT PROVIDER ---
         provider_code = "P2P"
         provider_icon = "👤"
         left_color_icon = "🔵"
-        
-        if (service == 'realdebrid' or service == 'torbox') and apikey:
+
+        if (service in ['realdebrid', 'torbox']) and apikey:
             provider_code = "RD" if service == 'realdebrid' else "TB"
             provider_icon = "⚡"
-            left_color_icon = "👑" if service == 'realdebrid' else "🧊️"
+            left_color_icon = "👑" if service == 'realdebrid' else "🧊"
             stream['url'] = f"{host_url}/{config}/playback/{service}/{info_hash}/video.mp4"
             stream['behaviorHints'] = {'notWebReady': True}
-            if 'infoHash' in stream: del stream['infoHash']
+            stream.pop('infoHash', None)
 
         stream['name'] = f"{left_color_icon} {provider_code} {provider_icon}\nTorrenthan"
+
         clean_filename = original_title.split('\n')[0].replace('.', ' ').strip()
+
         stream['title'] = (
             f"▶ {clean_filename}\n"
-            f"🔱 {data['res']} • {data['source']} • {data['codec']}{data['hdr']}\n"
-            f"🗣️ IT/GB | 💿 {data['audio']}\n"
-            f"💾 {data['size']} | 👥 {data['peers']}\n"
-            f"🔗 {data['uploader']}"
+            f"🔱 {data_meta['res']} • {data_meta['source']} • {data_meta['codec']}{data_meta['hdr']}\n"
+            f"🗣️ IT/GB | 💿 {data_meta['audio']}\n"
+            f"💾 {data_meta['size']} | 👥 {data_meta['peers']}\n"
+            f"🔗 {data_meta['uploader']}"
         )
-        final_streams.append(stream)
-    
-    
-    final_streams = final_streams[:20]
 
+        final_streams.append(stream)
+
+    if not final_streams:
+        return {"streams": []}
+
+    final_streams = final_streams[:20]
     final_streams.sort(key=lambda x: "⚡" not in x["name"])
+
     return {"streams": final_streams}
 
 if __name__ == "__main__":
