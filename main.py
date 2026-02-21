@@ -313,4 +313,4 @@ async def get_stream(request: Request, config: str, type: str, id: str):
     return {"streams": final_streams}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7002
+    uvicorn.run(app, host="0.0.0.0", port=7002)
